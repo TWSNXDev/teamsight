@@ -22,6 +22,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useSession, signOut } from "@/lib/auth-client";
 import { api, type SalesRecord, type Team } from "@/lib/api";
+import { socket } from "@/lib/socket";
 
 export default function DashboardPage() {
   const router = useRouter();
@@ -44,6 +45,35 @@ export default function DashboardPage() {
 
   useEffect(() => {
     if (!session) return;
+
+    socket.connect();
+
+    function handleCreated(record: SalesRecord) {
+      setRecords((prev) => [record, ...prev]);
+    }
+
+    function handleUpdated(record: SalesRecord) {
+      setRecords((prev) => prev.map((r) => (r.id === record.id ? record : r)));
+    }
+
+    function handleDeleted({ id }: { id: string }) {
+      setRecords((prev) => prev.filter((r) => r.id !== id));
+    }
+
+    socket.on("sales-record:created", handleCreated);
+    socket.on("sales-record:updated", handleUpdated);
+    socket.on("sales-record:deleted", handleDeleted);
+
+    return () => {
+      socket.off("sales-record:created", handleCreated);
+      socket.off("sales-record:updated", handleUpdated);
+      socket.off("sales-record:deleted", handleDeleted);
+      socket.disconnect();
+    };
+  }, [session]);
+
+  useEffect(() => {
+    if (!session) return;
     api.getSalesRecords().then(setRecords);
     api.getTeams().then((teams) => {
       setTeams(teams);
@@ -56,13 +86,12 @@ export default function DashboardPage() {
     setError(null);
 
     try {
-      const record = await api.createSalesRecord({
+      await api.createSalesRecord({
         product,
         amount: Number(amount),
         soldAt,
         teamId,
       });
-      setRecords((prev) => [record, ...prev]);
       setDialogOpen(false);
       setProduct("");
       setAmount("");
@@ -74,7 +103,6 @@ export default function DashboardPage() {
 
   async function handleDelete(id: string) {
     await api.deleteSalesRecord(id);
-    setRecords((prev) => prev.filter((r) => r.id !== id));
   }
 
   if (isPending || !session) {
