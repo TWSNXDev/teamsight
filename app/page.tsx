@@ -109,11 +109,24 @@ export default function DashboardPage() {
     return null;
   }
 
+  const role = session.user.role;
+  const userTeamId = session.user.teamId;
+  const canWrite = role === "ADMIN" || role === "MANAGER";
+  const selectableTeams =
+    role === "MANAGER" ? teams.filter((t) => t.id === userTeamId) : teams;
+
+  function canWriteRecord(record: SalesRecord) {
+    if (role === "ADMIN") return true;
+    if (role === "MANAGER") return record.teamId === userTeamId;
+    return false;
+  }
+
   return (
     <div className="flex flex-1 flex-col gap-6 p-8">
       <div className="flex items-center justify-between">
         <h1 className="text-2xl font-semibold">Sales Records</h1>
         <div className="flex items-center gap-2">
+          {canWrite && (
           <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
             <DialogTrigger render={<Button>Add record</Button>} />
             <DialogContent>
@@ -160,7 +173,7 @@ export default function DashboardPage() {
                     className="border-input rounded-md border bg-transparent px-3 py-2 text-sm"
                     required
                   >
-                    {teams.map((team) => (
+                    {selectableTeams.map((team) => (
                       <option key={team.id} value={team.id}>
                         {team.name}
                       </option>
@@ -172,6 +185,7 @@ export default function DashboardPage() {
               </form>
             </DialogContent>
           </Dialog>
+          )}
           <Button variant="outline" onClick={() => signOut()}>
             Sign out
           </Button>
@@ -200,13 +214,15 @@ export default function DashboardPage() {
               </TableCell>
               <TableCell>{record.recordedBy.name}</TableCell>
               <TableCell>
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={() => handleDelete(record.id)}
-                >
-                  Delete
-                </Button>
+                {canWriteRecord(record) && (
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => handleDelete(record.id)}
+                  >
+                    Delete
+                  </Button>
+                )}
               </TableCell>
             </TableRow>
           ))}
