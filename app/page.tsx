@@ -1,7 +1,16 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
+import {
+  Bar,
+  BarChart,
+  CartesianGrid,
+  ResponsiveContainer,
+  Tooltip,
+  XAxis,
+  YAxis,
+} from "recharts";
 import { Button } from "@/components/ui/button";
 import {
   Table,
@@ -98,6 +107,15 @@ export default function DashboardPage() {
       if (teams[0]) setTeamId(teams[0].id);
     });
   }, [session]);
+
+  const chartData = useMemo(() => {
+    const totals = new Map<string, number>();
+    for (const record of records) {
+      const current = totals.get(record.team.name) ?? 0;
+      totals.set(record.team.name, current + Number(record.amount));
+    }
+    return Array.from(totals, ([team, total]) => ({ team, total }));
+  }, [records]);
 
   async function handleCreate(e: React.FormEvent) {
     e.preventDefault();
@@ -262,6 +280,25 @@ export default function DashboardPage() {
           </Button>
         </div>
       </div>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Sales by Team</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <div className="h-64">
+            <ResponsiveContainer width="100%" height="100%">
+              <BarChart data={chartData}>
+                <CartesianGrid strokeDasharray="3 3" />
+                <XAxis dataKey="team" />
+                <YAxis />
+                <Tooltip />
+                <Bar dataKey="total" fill="var(--color-primary)" />
+              </BarChart>
+            </ResponsiveContainer>
+          </div>
+        </CardContent>
+      </Card>
 
       <Card>
         <CardHeader className="flex flex-row items-center justify-between">
