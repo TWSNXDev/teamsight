@@ -18,6 +18,7 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useSession, signOut } from "@/lib/auth-client";
@@ -43,6 +44,10 @@ export default function DashboardPage() {
   const [editAmount, setEditAmount] = useState("");
   const [editSoldAt, setEditSoldAt] = useState("");
   const [editError, setEditError] = useState<string | null>(null);
+
+  const [insight, setInsight] = useState<string | null>(null);
+  const [insightLoading, setInsightLoading] = useState(false);
+  const [insightError, setInsightError] = useState<string | null>(null);
 
   useEffect(() => {
     if (!isPending && !session) {
@@ -116,6 +121,20 @@ export default function DashboardPage() {
 
   async function handleDelete(id: string) {
     await api.deleteSalesRecord(id);
+  }
+
+  async function handleGenerateInsight() {
+    setInsightLoading(true);
+    setInsightError(null);
+
+    try {
+      const { insight } = await api.getInsight();
+      setInsight(insight);
+    } catch (err) {
+      setInsightError(err instanceof Error ? err.message : "Failed to generate insight");
+    } finally {
+      setInsightLoading(false);
+    }
   }
 
   function openEdit(record: SalesRecord) {
@@ -243,6 +262,29 @@ export default function DashboardPage() {
           </Button>
         </div>
       </div>
+
+      <Card>
+        <CardHeader className="flex flex-row items-center justify-between">
+          <CardTitle>AI Insight</CardTitle>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={handleGenerateInsight}
+            disabled={insightLoading}
+          >
+            {insightLoading ? "Generating..." : "Generate Insight"}
+          </Button>
+        </CardHeader>
+        <CardContent>
+          {insightError && <p className="text-sm text-destructive">{insightError}</p>}
+          {insight && <p className="text-sm whitespace-pre-line">{insight}</p>}
+          {!insight && !insightError && !insightLoading && (
+            <p className="text-sm text-muted-foreground">
+              Click &quot;Generate Insight&quot; to get an AI summary of recent sales.
+            </p>
+          )}
+        </CardContent>
+      </Card>
 
       <Dialog
         open={editingRecord !== null}

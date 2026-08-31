@@ -82,4 +82,5 @@ export const api = {
     }),
   deleteSalesRecord: (id: string) =>
     request<void>(`/api/sales-records/${id}`, { method: "DELETE" }),
+  getInsight: () => request<{ insight: string }>("/api/insights", { method: "POST" }),
 };
