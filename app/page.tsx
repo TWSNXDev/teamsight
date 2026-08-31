@@ -374,7 +374,7 @@ export default function DashboardPage() {
           <div className="flex max-h-64 flex-col gap-3 overflow-y-auto">
             {chatMessages.length === 0 && (
               <p className="text-sm text-muted-foreground">
-                e.g. &quot;ทำไมยอดขายสัปดาห์นี้เพิ่มขึ้น&quot;
+                e.g. &quot;Why did sales increase this week?&quot;
               </p>
             )}
             {chatMessages.map((m, i) => (
@@ -399,7 +399,7 @@ export default function DashboardPage() {
             <Input
               value={chatInput}
               onChange={(e) => setChatInput(e.target.value)}
-              placeholder="ถามเกี่ยวกับข้อมูลยอดขาย..."
+              placeholder="Ask about your sales data..."
               disabled={chatLoading}
             />
             <Button type="submit" disabled={chatLoading}>
