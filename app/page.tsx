@@ -36,6 +36,7 @@ export default function DashboardPage() {
   const [soldAt, setSoldAt] = useState("");
   const [teamId, setTeamId] = useState("");
   const [error, setError] = useState<string | null>(null);
+  const [onlineUsers, setOnlineUsers] = useState<{ id: string; name: string }[]>([]);
 
   useEffect(() => {
     if (!isPending && !session) {
@@ -60,14 +61,20 @@ export default function DashboardPage() {
       setRecords((prev) => prev.filter((r) => r.id !== id));
     }
 
+    function handleOnlineUsers(users: { id: string; name: string }[]) {
+      setOnlineUsers(users);
+    }
+
     socket.on("sales-record:created", handleCreated);
     socket.on("sales-record:updated", handleUpdated);
     socket.on("sales-record:deleted", handleDeleted);
+    socket.on("online-users", handleOnlineUsers);
 
     return () => {
       socket.off("sales-record:created", handleCreated);
       socket.off("sales-record:updated", handleUpdated);
       socket.off("sales-record:deleted", handleDeleted);
+      socket.off("online-users", handleOnlineUsers);
       socket.disconnect();
     };
   }, [session]);
@@ -124,7 +131,14 @@ export default function DashboardPage() {
   return (
     <div className="flex flex-1 flex-col gap-6 p-8">
       <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-semibold">Sales Records</h1>
+        <div className="flex items-center gap-3">
+          <h1 className="text-2xl font-semibold">Sales Records</h1>
+          <div className="flex items-center gap-1 text-sm text-muted-foreground">
+            <span className="h-2 w-2 rounded-full bg-green-500" />
+            {onlineUsers.length} online:{" "}
+            {onlineUsers.map((u) => u.name).join(", ")}
+          </div>
+        </div>
         <div className="flex items-center gap-2">
           {canWrite && (
           <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
