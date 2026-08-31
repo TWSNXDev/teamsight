@@ -40,6 +40,7 @@ import {
   type Team,
   type ChatMessage,
 } from "@/lib/api";
+import { exportSalesReportPdf } from "@/lib/export-pdf";
 import { socket } from "@/lib/socket";
 
 export default function DashboardPage() {
@@ -318,6 +319,13 @@ export default function DashboardPage() {
             </DialogContent>
           </Dialog>
           )}
+          <Button
+            variant="outline"
+            onClick={() => exportSalesReportPdf(records, insight)}
+            disabled={records.length === 0}
+          >
+            Export PDF
+          </Button>
           <Button variant="outline" onClick={() => signOut()}>
             Sign out
           </Button>
