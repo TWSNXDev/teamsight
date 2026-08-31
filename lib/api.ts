@@ -84,15 +84,21 @@ export const api = {
     request<void>(`/api/sales-records/${id}`, { method: "DELETE" }),
 };
 
-export async function streamInsight(onChunk: (text: string) => void) {
-  const res = await fetch(`${API_URL}/api/insights`, {
+async function streamPost(
+  path: string,
+  body: unknown,
+  onChunk: (text: string) => void,
+) {
+  const res = await fetch(`${API_URL}${path}`, {
     method: "POST",
     credentials: "include",
+    headers: body ? { "Content-Type": "application/json" } : undefined,
+    body: body ? JSON.stringify(body) : undefined,
   });
 
   if (!res.ok || !res.body) {
-    const body = await res.json().catch(() => null);
-    throw new Error(body?.message ?? `Request failed with ${res.status}`);
+    const errBody = await res.json().catch(() => null);
+    throw new Error(errBody?.message ?? `Request failed with ${res.status}`);
   }
 
   const reader = res.body.getReader();
@@ -103,4 +109,17 @@ export async function streamInsight(onChunk: (text: string) => void) {
     if (done) break;
     onChunk(decoder.decode(value, { stream: true }));
   }
+}
+
+export function streamInsight(onChunk: (text: string) => void) {
+  return streamPost("/api/insights", undefined, onChunk);
+}
+
+export interface ChatMessage {
+  role: "user" | "assistant";
+  content: string;
+}
+
+export function streamChat(messages: ChatMessage[], onChunk: (text: string) => void) {
+  return streamPost("/api/chat", { messages }, onChunk);
 }

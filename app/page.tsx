@@ -31,7 +31,15 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useSession, signOut } from "@/lib/auth-client";
-import { api, streamInsight, ConflictError, type SalesRecord, type Team } from "@/lib/api";
+import {
+  api,
+  streamInsight,
+  streamChat,
+  ConflictError,
+  type SalesRecord,
+  type Team,
+  type ChatMessage,
+} from "@/lib/api";
 import { socket } from "@/lib/socket";
 
 export default function DashboardPage() {
@@ -57,6 +65,11 @@ export default function DashboardPage() {
   const [insight, setInsight] = useState<string | null>(null);
   const [insightLoading, setInsightLoading] = useState(false);
   const [insightError, setInsightError] = useState<string | null>(null);
+
+  const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
+  const [chatInput, setChatInput] = useState("");
+  const [chatLoading, setChatLoading] = useState(false);
+  const [chatError, setChatError] = useState<string | null>(null);
 
   useEffect(() => {
     if (!isPending && !session) {
@@ -154,6 +167,34 @@ export default function DashboardPage() {
       setInsightError(err instanceof Error ? err.message : "Failed to generate insight");
     } finally {
       setInsightLoading(false);
+    }
+  }
+
+  async function handleSendChat(e: React.FormEvent) {
+    e.preventDefault();
+    if (!chatInput.trim()) return;
+
+    const userMessage: ChatMessage = { role: "user", content: chatInput };
+    const history = [...chatMessages, userMessage];
+
+    setChatMessages([...history, { role: "assistant", content: "" }]);
+    setChatInput("");
+    setChatLoading(true);
+    setChatError(null);
+
+    try {
+      await streamChat(history, (chunk) => {
+        setChatMessages((prev) => {
+          const next = [...prev];
+          const last = next[next.length - 1];
+          next[next.length - 1] = { ...last, content: last.content + chunk };
+          return next;
+        });
+      });
+    } catch (err) {
+      setChatError(err instanceof Error ? err.message : "Failed to get a response");
+    } finally {
+      setChatLoading(false);
     }
   }
 
@@ -322,6 +363,49 @@ export default function DashboardPage() {
               Click &quot;Generate Insight&quot; to get an AI summary of recent sales.
             </p>
           )}
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Ask about your sales data</CardTitle>
+        </CardHeader>
+        <CardContent className="flex flex-col gap-4">
+          <div className="flex max-h-64 flex-col gap-3 overflow-y-auto">
+            {chatMessages.length === 0 && (
+              <p className="text-sm text-muted-foreground">
+                e.g. &quot;ทำไมยอดขายสัปดาห์นี้เพิ่มขึ้น&quot;
+              </p>
+            )}
+            {chatMessages.map((m, i) => (
+              <div
+                key={i}
+                className={m.role === "user" ? "text-right" : "text-left"}
+              >
+                <span
+                  className={
+                    m.role === "user"
+                      ? "inline-block rounded-lg bg-primary px-3 py-2 text-sm text-primary-foreground"
+                      : "inline-block rounded-lg bg-muted px-3 py-2 text-sm whitespace-pre-line"
+                  }
+                >
+                  {m.content || "..."}
+                </span>
+              </div>
+            ))}
+          </div>
+          {chatError && <p className="text-sm text-destructive">{chatError}</p>}
+          <form onSubmit={handleSendChat} className="flex gap-2">
+            <Input
+              value={chatInput}
+              onChange={(e) => setChatInput(e.target.value)}
+              placeholder="ถามเกี่ยวกับข้อมูลยอดขาย..."
+              disabled={chatLoading}
+            />
+            <Button type="submit" disabled={chatLoading}>
+              Send
+            </Button>
+          </form>
         </CardContent>
       </Card>
 
