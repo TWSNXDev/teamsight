@@ -21,7 +21,7 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useSession, signOut } from "@/lib/auth-client";
-import { api, type SalesRecord, type Team } from "@/lib/api";
+import { api, ConflictError, type SalesRecord, type Team } from "@/lib/api";
 import { socket } from "@/lib/socket";
 
 export default function DashboardPage() {
@@ -37,6 +37,12 @@ export default function DashboardPage() {
   const [teamId, setTeamId] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [onlineUsers, setOnlineUsers] = useState<{ id: string; name: string }[]>([]);
+
+  const [editingRecord, setEditingRecord] = useState<SalesRecord | null>(null);
+  const [editProduct, setEditProduct] = useState("");
+  const [editAmount, setEditAmount] = useState("");
+  const [editSoldAt, setEditSoldAt] = useState("");
+  const [editError, setEditError] = useState<string | null>(null);
 
   useEffect(() => {
     if (!isPending && !session) {
@@ -110,6 +116,38 @@ export default function DashboardPage() {
 
   async function handleDelete(id: string) {
     await api.deleteSalesRecord(id);
+  }
+
+  function openEdit(record: SalesRecord) {
+    setEditingRecord(record);
+    setEditProduct(record.product);
+    setEditAmount(record.amount);
+    setEditSoldAt(record.soldAt.slice(0, 10));
+    setEditError(null);
+  }
+
+  async function handleUpdate(e: React.FormEvent) {
+    e.preventDefault();
+    if (!editingRecord) return;
+    setEditError(null);
+
+    try {
+      await api.updateSalesRecord(editingRecord.id, {
+        product: editProduct,
+        amount: Number(editAmount),
+        soldAt: editSoldAt,
+        expectedUpdatedAt: editingRecord.updatedAt,
+      });
+      setEditingRecord(null);
+    } catch (err) {
+      if (err instanceof ConflictError) {
+        setEditError(
+          "Someone else already changed this record. The table now shows the latest version — please try again.",
+        );
+        return;
+      }
+      setEditError(err instanceof Error ? err.message : "Failed to update record");
+    }
   }
 
   if (isPending || !session) {
@@ -206,6 +244,51 @@ export default function DashboardPage() {
         </div>
       </div>
 
+      <Dialog
+        open={editingRecord !== null}
+        onOpenChange={(open) => !open && setEditingRecord(null)}
+      >
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Edit sales record</DialogTitle>
+          </DialogHeader>
+          <form onSubmit={handleUpdate} className="flex flex-col gap-4">
+            <div className="flex flex-col gap-2">
+              <Label htmlFor="edit-product">Product</Label>
+              <Input
+                id="edit-product"
+                value={editProduct}
+                onChange={(e) => setEditProduct(e.target.value)}
+                required
+              />
+            </div>
+            <div className="flex flex-col gap-2">
+              <Label htmlFor="edit-amount">Amount</Label>
+              <Input
+                id="edit-amount"
+                type="number"
+                step="0.01"
+                value={editAmount}
+                onChange={(e) => setEditAmount(e.target.value)}
+                required
+              />
+            </div>
+            <div className="flex flex-col gap-2">
+              <Label htmlFor="edit-soldAt">Sold at</Label>
+              <Input
+                id="edit-soldAt"
+                type="date"
+                value={editSoldAt}
+                onChange={(e) => setEditSoldAt(e.target.value)}
+                required
+              />
+            </div>
+            {editError && <p className="text-sm text-destructive">{editError}</p>}
+            <Button type="submit">Save</Button>
+          </form>
+        </DialogContent>
+      </Dialog>
+
       <Table>
         <TableHeader>
           <TableRow>
@@ -229,13 +312,22 @@ export default function DashboardPage() {
               <TableCell>{record.recordedBy.name}</TableCell>
               <TableCell>
                 {canWriteRecord(record) && (
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    onClick={() => handleDelete(record.id)}
-                  >
-                    Delete
-                  </Button>
+                  <div className="flex gap-2">
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => openEdit(record)}
+                    >
+                      Edit
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => handleDelete(record.id)}
+                    >
+                      Delete
+                    </Button>
+                  </div>
                 )}
               </TableCell>
             </TableRow>

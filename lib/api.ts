@@ -1,5 +1,15 @@
 const API_URL = process.env.NEXT_PUBLIC_API_URL;
 
+export class ConflictError extends Error {
+  current: unknown;
+
+  constructor(message: string, current: unknown) {
+    super(message);
+    this.name = "ConflictError";
+    this.current = current;
+  }
+}
+
 async function request<T>(path: string, options?: RequestInit): Promise<T> {
   const res = await fetch(`${API_URL}${path}`, {
     ...options,
@@ -12,6 +22,12 @@ async function request<T>(path: string, options?: RequestInit): Promise<T> {
 
   if (!res.ok) {
     const body = await res.json().catch(() => null);
+    if (res.status === 409) {
+      throw new ConflictError(
+        body?.message ?? "Conflict",
+        body?.current,
+      );
+    }
     throw new Error(body?.message ?? `Request failed with ${res.status}`);
   }
 
@@ -32,6 +48,7 @@ export interface SalesRecord {
   product: string;
   amount: string;
   soldAt: string;
+  updatedAt: string;
   teamId: string;
   team: Team;
   recordedBy: { id: string; name: string };
@@ -48,6 +65,19 @@ export const api = {
   }) =>
     request<SalesRecord>("/api/sales-records", {
       method: "POST",
+      body: JSON.stringify(data),
+    }),
+  updateSalesRecord: (
+    id: string,
+    data: {
+      product?: string;
+      amount?: number;
+      soldAt?: string;
+      expectedUpdatedAt: string;
+    },
+  ) =>
+    request<SalesRecord>(`/api/sales-records/${id}`, {
+      method: "PATCH",
       body: JSON.stringify(data),
     }),
   deleteSalesRecord: (id: string) =>
