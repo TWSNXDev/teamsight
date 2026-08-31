@@ -5,12 +5,7 @@ import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import {
-  Card,
-  CardContent,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
+import { AuthBranding } from "@/components/auth-branding";
 import { signIn } from "@/lib/auth-client";
 
 export default function LoginPage() {
@@ -37,18 +32,32 @@ export default function LoginPage() {
   }
 
   return (
-    <div className="flex flex-1 items-center justify-center p-4">
-      <Card className="w-full max-w-sm">
-        <CardHeader>
-          <CardTitle>Sign in</CardTitle>
-        </CardHeader>
-        <CardContent>
+    <div className="flex flex-1">
+      <AuthBranding />
+
+      <div className="flex flex-1 items-center justify-center p-6 sm:p-10">
+        <div className="flex w-full max-w-sm flex-col gap-8">
+          <div className="flex items-center gap-2 text-lg font-semibold tracking-tight lg:hidden">
+            <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary font-bold text-primary-foreground">
+              T
+            </span>
+            Teamsight
+          </div>
+
+          <div className="flex flex-col gap-1.5">
+            <h1 className="text-2xl font-semibold tracking-tight">Welcome back</h1>
+            <p className="text-sm text-muted-foreground">
+              Sign in to keep track of your team&apos;s sales.
+            </p>
+          </div>
+
           <form onSubmit={handleSubmit} className="flex flex-col gap-4">
             <div className="flex flex-col gap-2">
               <Label htmlFor="email">Email</Label>
               <Input
                 id="email"
                 type="email"
+                autoComplete="email"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 required
@@ -59,24 +68,30 @@ export default function LoginPage() {
               <Input
                 id="password"
                 type="password"
+                autoComplete="current-password"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 required
               />
             </div>
-            {error && <p className="text-sm text-destructive">{error}</p>}
-            <Button type="submit" disabled={loading}>
+            {error && (
+              <p className="rounded-md bg-destructive/10 px-3 py-2 text-sm text-destructive">
+                {error}
+              </p>
+            )}
+            <Button type="submit" size="lg" disabled={loading} className="mt-1">
               {loading ? "Signing in..." : "Sign in"}
             </Button>
           </form>
-          <p className="mt-4 text-center text-sm text-muted-foreground">
-            No account?{" "}
-            <Link href="/register" className="underline">
+
+          <p className="text-center text-sm text-muted-foreground">
+            Don&apos;t have an account?{" "}
+            <Link href="/register" className="font-medium text-foreground underline underline-offset-4">
               Create one
             </Link>
           </p>
-        </CardContent>
-      </Card>
+        </div>
+      </div>
     </div>
   );
 }
