@@ -82,5 +82,25 @@ export const api = {
     }),
   deleteSalesRecord: (id: string) =>
     request<void>(`/api/sales-records/${id}`, { method: "DELETE" }),
-  getInsight: () => request<{ insight: string }>("/api/insights", { method: "POST" }),
 };
+
+export async function streamInsight(onChunk: (text: string) => void) {
+  const res = await fetch(`${API_URL}/api/insights`, {
+    method: "POST",
+    credentials: "include",
+  });
+
+  if (!res.ok || !res.body) {
+    const body = await res.json().catch(() => null);
+    throw new Error(body?.message ?? `Request failed with ${res.status}`);
+  }
+
+  const reader = res.body.getReader();
+  const decoder = new TextDecoder();
+
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    onChunk(decoder.decode(value, { stream: true }));
+  }
+}

@@ -31,7 +31,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useSession, signOut } from "@/lib/auth-client";
-import { api, ConflictError, type SalesRecord, type Team } from "@/lib/api";
+import { api, streamInsight, ConflictError, type SalesRecord, type Team } from "@/lib/api";
 import { socket } from "@/lib/socket";
 
 export default function DashboardPage() {
@@ -144,10 +144,12 @@ export default function DashboardPage() {
   async function handleGenerateInsight() {
     setInsightLoading(true);
     setInsightError(null);
+    setInsight("");
 
     try {
-      const { insight } = await api.getInsight();
-      setInsight(insight);
+      await streamInsight((chunk) => {
+        setInsight((prev) => (prev ?? "") + chunk);
+      });
     } catch (err) {
       setInsightError(err instanceof Error ? err.message : "Failed to generate insight");
     } finally {
