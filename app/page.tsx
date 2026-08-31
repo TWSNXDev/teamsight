@@ -11,6 +11,20 @@ import {
   XAxis,
   YAxis,
 } from "recharts";
+import {
+  DollarSign,
+  Receipt,
+  TrendingUp,
+  Users,
+  Sparkles,
+  Pencil,
+  Trash2,
+  FileDown,
+  Plus,
+  Inbox,
+  ChevronLeft,
+  ChevronRight,
+} from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   Table,
@@ -27,10 +41,31 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { useSession, signOut } from "@/lib/auth-client";
+import { Skeleton } from "@/components/ui/skeleton";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { toast } from "sonner";
+import { DashboardNav } from "@/components/dashboard-nav";
+import { ChatWidget } from "@/components/chat-widget";
+import { useSession } from "@/lib/auth-client";
 import {
   api,
   streamInsight,
@@ -43,25 +78,35 @@ import {
 import { exportSalesReportPdf } from "@/lib/export-pdf";
 import { socket } from "@/lib/socket";
 
+const currency = new Intl.NumberFormat("en-US", {
+  style: "currency",
+  currency: "THB",
+  maximumFractionDigits: 0,
+});
+
 export default function DashboardPage() {
   const router = useRouter();
   const { data: session, isPending } = useSession();
 
   const [records, setRecords] = useState<SalesRecord[]>([]);
+  const [recordsLoading, setRecordsLoading] = useState(true);
   const [teams, setTeams] = useState<Team[]>([]);
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(25);
   const [dialogOpen, setDialogOpen] = useState(false);
   const [product, setProduct] = useState("");
   const [amount, setAmount] = useState("");
   const [soldAt, setSoldAt] = useState("");
   const [teamId, setTeamId] = useState("");
-  const [error, setError] = useState<string | null>(null);
   const [onlineUsers, setOnlineUsers] = useState<{ id: string; name: string }[]>([]);
+
+  const [deleteTarget, setDeleteTarget] = useState<SalesRecord | null>(null);
+  const [deleting, setDeleting] = useState(false);
 
   const [editingRecord, setEditingRecord] = useState<SalesRecord | null>(null);
   const [editProduct, setEditProduct] = useState("");
   const [editAmount, setEditAmount] = useState("");
   const [editSoldAt, setEditSoldAt] = useState("");
-  const [editError, setEditError] = useState<string | null>(null);
 
   const [insight, setInsight] = useState<string | null>(null);
   const [insightLoading, setInsightLoading] = useState(false);
@@ -115,10 +160,11 @@ export default function DashboardPage() {
 
   useEffect(() => {
     if (!session) return;
-    api.getSalesRecords().then(setRecords);
-    api.getTeams().then((teams) => {
+    Promise.all([api.getSalesRecords(), api.getTeams()]).then(([records, teams]) => {
+      setRecords(records);
       setTeams(teams);
       if (teams[0]) setTeamId(teams[0].id);
+      setRecordsLoading(false);
     });
   }, [session]);
 
@@ -131,9 +177,21 @@ export default function DashboardPage() {
     return Array.from(totals, ([team, total]) => ({ team, total }));
   }, [records]);
 
+  const stats = useMemo(() => {
+    const totalRevenue = records.reduce((sum, r) => sum + Number(r.amount), 0);
+    const recordCount = records.length;
+    const avgDeal = recordCount === 0 ? 0 : totalRevenue / recordCount;
+    return { totalRevenue, recordCount, avgDeal };
+  }, [records]);
+
+  const totalPages = Math.max(1, Math.ceil(records.length / pageSize));
+  const currentPage = Math.min(page, totalPages);
+  const pageStart = records.length === 0 ? 0 : (currentPage - 1) * pageSize + 1;
+  const pageEnd = Math.min(currentPage * pageSize, records.length);
+  const paginatedRecords = records.slice(pageStart - 1, pageEnd);
+
   async function handleCreate(e: React.FormEvent) {
     e.preventDefault();
-    setError(null);
 
     try {
       await api.createSalesRecord({
@@ -146,13 +204,25 @@ export default function DashboardPage() {
       setProduct("");
       setAmount("");
       setSoldAt("");
+      toast.success("Record added");
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to create record");
+      toast.error(err instanceof Error ? err.message : "Failed to create record");
     }
   }
 
-  async function handleDelete(id: string) {
-    await api.deleteSalesRecord(id);
+  async function confirmDelete() {
+    if (!deleteTarget) return;
+    setDeleting(true);
+
+    try {
+      await api.deleteSalesRecord(deleteTarget.id);
+      toast.success("Record deleted");
+      setDeleteTarget(null);
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Failed to delete record");
+    } finally {
+      setDeleting(false);
+    }
   }
 
   async function handleGenerateInsight() {
@@ -204,13 +274,11 @@ export default function DashboardPage() {
     setEditProduct(record.product);
     setEditAmount(record.amount);
     setEditSoldAt(record.soldAt.slice(0, 10));
-    setEditError(null);
   }
 
   async function handleUpdate(e: React.FormEvent) {
     e.preventDefault();
     if (!editingRecord) return;
-    setEditError(null);
 
     try {
       await api.updateSalesRecord(editingRecord.id, {
@@ -220,19 +288,31 @@ export default function DashboardPage() {
         expectedUpdatedAt: editingRecord.updatedAt,
       });
       setEditingRecord(null);
+      toast.success("Record updated");
     } catch (err) {
       if (err instanceof ConflictError) {
-        setEditError(
+        setEditingRecord(null);
+        toast.error(
           "Someone else already changed this record. The table now shows the latest version — please try again.",
         );
         return;
       }
-      setEditError(err instanceof Error ? err.message : "Failed to update record");
+      toast.error(err instanceof Error ? err.message : "Failed to update record");
     }
   }
 
   if (isPending || !session) {
-    return null;
+    return (
+      <div className="flex flex-1 flex-col gap-6 p-8">
+        <Skeleton className="h-14 w-full max-w-sm" />
+        <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
+          {Array.from({ length: 4 }).map((_, i) => (
+            <Skeleton key={i} className="h-24 w-full" />
+          ))}
+        </div>
+        <Skeleton className="h-72 w-full" />
+      </div>
+    );
   }
 
   const role = session.user.role;
@@ -248,265 +328,450 @@ export default function DashboardPage() {
   }
 
   return (
-    <div className="flex flex-1 flex-col gap-6 p-8">
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-3">
-          <h1 className="text-2xl font-semibold">Sales Records</h1>
-          <div className="flex items-center gap-1 text-sm text-muted-foreground">
-            <span className="h-2 w-2 rounded-full bg-green-500" />
-            {onlineUsers.length} online:{" "}
-            {onlineUsers.map((u) => u.name).join(", ")}
-          </div>
-        </div>
-        <div className="flex items-center gap-2">
-          {canWrite && (
-          <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
-            <DialogTrigger render={<Button>Add record</Button>} />
-            <DialogContent>
-              <DialogHeader>
-                <DialogTitle>Add sales record</DialogTitle>
-              </DialogHeader>
-              <form onSubmit={handleCreate} className="flex flex-col gap-4">
-                <div className="flex flex-col gap-2">
-                  <Label htmlFor="product">Product</Label>
-                  <Input
-                    id="product"
-                    value={product}
-                    onChange={(e) => setProduct(e.target.value)}
-                    required
-                  />
-                </div>
-                <div className="flex flex-col gap-2">
-                  <Label htmlFor="amount">Amount</Label>
-                  <Input
-                    id="amount"
-                    type="number"
-                    step="0.01"
-                    value={amount}
-                    onChange={(e) => setAmount(e.target.value)}
-                    required
-                  />
-                </div>
-                <div className="flex flex-col gap-2">
-                  <Label htmlFor="soldAt">Sold at</Label>
-                  <Input
-                    id="soldAt"
-                    type="date"
-                    value={soldAt}
-                    onChange={(e) => setSoldAt(e.target.value)}
-                    required
-                  />
-                </div>
-                <div className="flex flex-col gap-2">
-                  <Label htmlFor="teamId">Team</Label>
-                  <select
-                    id="teamId"
-                    value={teamId}
-                    onChange={(e) => setTeamId(e.target.value)}
-                    className="border-input rounded-md border bg-transparent px-3 py-2 text-sm"
-                    required
-                  >
-                    {selectableTeams.map((team) => (
-                      <option key={team.id} value={team.id}>
-                        {team.name}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-                {error && <p className="text-sm text-destructive">{error}</p>}
-                <Button type="submit">Save</Button>
-              </form>
-            </DialogContent>
-          </Dialog>
-          )}
-          <Button
-            variant="outline"
-            onClick={() => exportSalesReportPdf(records, insight)}
-            disabled={records.length === 0}
-          >
-            Export PDF
-          </Button>
-          <Button variant="outline" onClick={() => signOut()}>
-            Sign out
-          </Button>
-        </div>
-      </div>
+    <div className="flex flex-1 flex-col">
+      <DashboardNav user={session.user} onlineCount={onlineUsers.length} />
 
-      <Card>
-        <CardHeader>
-          <CardTitle>Sales by Team</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <div className="h-64">
-            <ResponsiveContainer width="100%" height="100%">
-              <BarChart data={chartData}>
-                <CartesianGrid strokeDasharray="3 3" />
-                <XAxis dataKey="team" />
-                <YAxis />
-                <Tooltip />
-                <Bar dataKey="total" fill="var(--color-primary)" />
-              </BarChart>
-            </ResponsiveContainer>
-          </div>
-        </CardContent>
-      </Card>
-
-      <Card>
-        <CardHeader className="flex flex-row items-center justify-between">
-          <CardTitle>AI Insight</CardTitle>
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={handleGenerateInsight}
-            disabled={insightLoading}
-          >
-            {insightLoading ? "Generating..." : "Generate Insight"}
-          </Button>
-        </CardHeader>
-        <CardContent>
-          {insightError && <p className="text-sm text-destructive">{insightError}</p>}
-          {insight && <p className="text-sm whitespace-pre-line">{insight}</p>}
-          {!insight && !insightError && !insightLoading && (
+      <div className="mx-auto flex w-full max-w-7xl flex-1 flex-col gap-8 px-4 py-8 sm:px-6 lg:px-8">
+        <div className="flex flex-wrap items-center justify-between gap-4">
+          <div>
+            <h1 className="text-2xl font-semibold tracking-tight">Sales overview</h1>
             <p className="text-sm text-muted-foreground">
-              Click &quot;Generate Insight&quot; to get an AI summary of recent sales.
+              {onlineUsers.length > 0
+                ? `${onlineUsers.map((u) => u.name).join(", ")} online now`
+                : "Real-time view of your team's performance"}
             </p>
-          )}
-        </CardContent>
-      </Card>
-
-      <Card>
-        <CardHeader>
-          <CardTitle>Ask about your sales data</CardTitle>
-        </CardHeader>
-        <CardContent className="flex flex-col gap-4">
-          <div className="flex max-h-64 flex-col gap-3 overflow-y-auto">
-            {chatMessages.length === 0 && (
-              <p className="text-sm text-muted-foreground">
-                e.g. &quot;Why did sales increase this week?&quot;
-              </p>
-            )}
-            {chatMessages.map((m, i) => (
-              <div
-                key={i}
-                className={m.role === "user" ? "text-right" : "text-left"}
-              >
-                <span
-                  className={
-                    m.role === "user"
-                      ? "inline-block rounded-lg bg-primary px-3 py-2 text-sm text-primary-foreground"
-                      : "inline-block rounded-lg bg-muted px-3 py-2 text-sm whitespace-pre-line"
-                  }
-                >
-                  {m.content || "..."}
-                </span>
-              </div>
-            ))}
           </div>
-          {chatError && <p className="text-sm text-destructive">{chatError}</p>}
-          <form onSubmit={handleSendChat} className="flex gap-2">
-            <Input
-              value={chatInput}
-              onChange={(e) => setChatInput(e.target.value)}
-              placeholder="Ask about your sales data..."
-              disabled={chatLoading}
-            />
-            <Button type="submit" disabled={chatLoading}>
-              Send
+          <div className="flex items-center gap-2">
+            {canWrite && (
+              <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
+                <DialogTrigger
+                  render={
+                    <Button>
+                      <Plus /> Add record
+                    </Button>
+                  }
+                />
+                <DialogContent>
+                  <DialogHeader>
+                    <DialogTitle>Add sales record</DialogTitle>
+                  </DialogHeader>
+                  <form onSubmit={handleCreate} className="flex flex-col gap-4">
+                    <div className="flex flex-col gap-2">
+                      <Label htmlFor="product">Product</Label>
+                      <Input
+                        id="product"
+                        value={product}
+                        onChange={(e) => setProduct(e.target.value)}
+                        required
+                      />
+                    </div>
+                    <div className="flex flex-col gap-2">
+                      <Label htmlFor="amount">Amount</Label>
+                      <Input
+                        id="amount"
+                        type="number"
+                        step="0.01"
+                        value={amount}
+                        onChange={(e) => setAmount(e.target.value)}
+                        required
+                      />
+                    </div>
+                    <div className="flex flex-col gap-2">
+                      <Label htmlFor="soldAt">Sold at</Label>
+                      <Input
+                        id="soldAt"
+                        type="date"
+                        value={soldAt}
+                        onChange={(e) => setSoldAt(e.target.value)}
+                        required
+                      />
+                    </div>
+                    <div className="flex flex-col gap-2">
+                      <Label htmlFor="teamId">Team</Label>
+                      <Select value={teamId} onValueChange={(value) => setTeamId(value ?? "")}>
+                        <SelectTrigger id="teamId" className="w-full">
+                          <SelectValue placeholder="Select a team" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {selectableTeams.map((team) => (
+                            <SelectItem key={team.id} value={team.id}>
+                              {team.name}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <Button type="submit">Save</Button>
+                  </form>
+                </DialogContent>
+              </Dialog>
+            )}
+            <Button
+              variant="outline"
+              onClick={() => exportSalesReportPdf(records, insight)}
+              disabled={records.length === 0}
+            >
+              <FileDown /> Export PDF
             </Button>
-          </form>
-        </CardContent>
-      </Card>
+          </div>
+        </div>
 
-      <Dialog
-        open={editingRecord !== null}
-        onOpenChange={(open) => !open && setEditingRecord(null)}
-      >
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Edit sales record</DialogTitle>
-          </DialogHeader>
-          <form onSubmit={handleUpdate} className="flex flex-col gap-4">
-            <div className="flex flex-col gap-2">
-              <Label htmlFor="edit-product">Product</Label>
-              <Input
-                id="edit-product"
-                value={editProduct}
-                onChange={(e) => setEditProduct(e.target.value)}
-                required
+        <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
+          {recordsLoading ? (
+            Array.from({ length: 4 }).map((_, i) => (
+              <Skeleton key={i} className="h-24 w-full" />
+            ))
+          ) : (
+            <>
+              <StatCard
+                icon={DollarSign}
+                label="Total revenue"
+                value={currency.format(stats.totalRevenue)}
               />
-            </div>
-            <div className="flex flex-col gap-2">
-              <Label htmlFor="edit-amount">Amount</Label>
-              <Input
-                id="edit-amount"
-                type="number"
-                step="0.01"
-                value={editAmount}
-                onChange={(e) => setEditAmount(e.target.value)}
-                required
+              <StatCard icon={Receipt} label="Records" value={String(stats.recordCount)} />
+              <StatCard
+                icon={TrendingUp}
+                label="Avg. deal size"
+                value={currency.format(stats.avgDeal)}
               />
-            </div>
-            <div className="flex flex-col gap-2">
-              <Label htmlFor="edit-soldAt">Sold at</Label>
-              <Input
-                id="edit-soldAt"
-                type="date"
-                value={editSoldAt}
-                onChange={(e) => setEditSoldAt(e.target.value)}
-                required
-              />
-            </div>
-            {editError && <p className="text-sm text-destructive">{editError}</p>}
-            <Button type="submit">Save</Button>
-          </form>
-        </DialogContent>
-      </Dialog>
+              <StatCard icon={Users} label="Online now" value={String(onlineUsers.length)} />
+            </>
+          )}
+        </div>
 
-      <Table>
-        <TableHeader>
-          <TableRow>
-            <TableHead>Product</TableHead>
-            <TableHead>Amount</TableHead>
-            <TableHead>Team</TableHead>
-            <TableHead>Sold at</TableHead>
-            <TableHead>Recorded by</TableHead>
-            <TableHead></TableHead>
-          </TableRow>
-        </TableHeader>
-        <TableBody>
-          {records.map((record) => (
-            <TableRow key={record.id}>
-              <TableCell>{record.product}</TableCell>
-              <TableCell>{record.amount}</TableCell>
-              <TableCell>{record.team.name}</TableCell>
-              <TableCell>
-                {new Date(record.soldAt).toLocaleDateString()}
-              </TableCell>
-              <TableCell>{record.recordedBy.name}</TableCell>
-              <TableCell>
-                {canWriteRecord(record) && (
-                  <div className="flex gap-2">
+        <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
+          <Card>
+            <CardHeader>
+              <CardTitle>Sales by team</CardTitle>
+            </CardHeader>
+            <CardContent>
+              {recordsLoading ? (
+                <Skeleton className="h-64 w-full" />
+              ) : chartData.length === 0 ? (
+                <EmptyState
+                  icon={TrendingUp}
+                  title="No sales yet"
+                  description="Add your first record to see it charted here."
+                />
+              ) : (
+                <div className="h-64">
+                  <ResponsiveContainer width="100%" height="100%">
+                    <BarChart data={chartData}>
+                      <CartesianGrid strokeDasharray="3 3" className="stroke-border" />
+                      <XAxis
+                        dataKey="team"
+                        tick={{ fontSize: 12, fill: "var(--muted-foreground)" }}
+                        axisLine={{ stroke: "var(--border)" }}
+                        tickLine={false}
+                      />
+                      <YAxis
+                        tick={{ fontSize: 12, fill: "var(--muted-foreground)" }}
+                        axisLine={false}
+                        tickLine={false}
+                      />
+                      <Tooltip
+                        cursor={{ fill: "var(--muted)" }}
+                        contentStyle={{
+                          background: "var(--popover)",
+                          border: "1px solid var(--border)",
+                          borderRadius: "var(--radius-md)",
+                          fontSize: 13,
+                        }}
+                      />
+                      <Bar dataKey="total" fill="var(--color-primary)" radius={[6, 6, 0, 0]} />
+                    </BarChart>
+                  </ResponsiveContainer>
+                </div>
+              )}
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader className="flex flex-row items-center justify-between">
+              <CardTitle className="flex items-center gap-2">
+                <Sparkles className="size-4 text-primary" /> AI Insight
+              </CardTitle>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={handleGenerateInsight}
+                disabled={insightLoading}
+              >
+                {insightLoading ? "Generating..." : "Generate"}
+              </Button>
+            </CardHeader>
+            <CardContent>
+              {insightError && (
+                <p className="rounded-md bg-destructive/10 px-3 py-2 text-sm text-destructive">
+                  {insightError}
+                </p>
+              )}
+              {insight && <p className="text-sm leading-relaxed whitespace-pre-line">{insight}</p>}
+              {!insight && !insightError && !insightLoading && (
+                <EmptyState
+                  icon={Sparkles}
+                  title="No insight yet"
+                  description='Click "Generate" for an AI summary of recent sales.'
+                />
+              )}
+            </CardContent>
+          </Card>
+        </div>
+
+
+        <Dialog
+          open={editingRecord !== null}
+          onOpenChange={(open) => !open && setEditingRecord(null)}
+        >
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>Edit sales record</DialogTitle>
+            </DialogHeader>
+            <form onSubmit={handleUpdate} className="flex flex-col gap-4">
+              <div className="flex flex-col gap-2">
+                <Label htmlFor="edit-product">Product</Label>
+                <Input
+                  id="edit-product"
+                  value={editProduct}
+                  onChange={(e) => setEditProduct(e.target.value)}
+                  required
+                />
+              </div>
+              <div className="flex flex-col gap-2">
+                <Label htmlFor="edit-amount">Amount</Label>
+                <Input
+                  id="edit-amount"
+                  type="number"
+                  step="0.01"
+                  value={editAmount}
+                  onChange={(e) => setEditAmount(e.target.value)}
+                  required
+                />
+              </div>
+              <div className="flex flex-col gap-2">
+                <Label htmlFor="edit-soldAt">Sold at</Label>
+                <Input
+                  id="edit-soldAt"
+                  type="date"
+                  value={editSoldAt}
+                  onChange={(e) => setEditSoldAt(e.target.value)}
+                  required
+                />
+              </div>
+              <Button type="submit">Save</Button>
+            </form>
+          </DialogContent>
+        </Dialog>
+
+        <AlertDialog
+          open={deleteTarget !== null}
+          onOpenChange={(open) => !open && setDeleteTarget(null)}
+        >
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle>Delete this record?</AlertDialogTitle>
+              <AlertDialogDescription>
+                {deleteTarget && (
+                  <>
+                    This will permanently delete the &quot;{deleteTarget.product}&quot; record
+                    for {currency.format(Number(deleteTarget.amount))}. This cannot be undone.
+                  </>
+                )}
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel>Cancel</AlertDialogCancel>
+              <AlertDialogAction variant="destructive" onClick={confirmDelete} disabled={deleting}>
+                {deleting ? "Deleting..." : "Delete"}
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
+
+        <Card>
+          <CardHeader>
+            <CardTitle>Sales records</CardTitle>
+          </CardHeader>
+          <CardContent>
+            {recordsLoading ? (
+              <div className="flex flex-col gap-3">
+                {Array.from({ length: 4 }).map((_, i) => (
+                  <Skeleton key={i} className="h-10 w-full" />
+                ))}
+              </div>
+            ) : records.length === 0 ? (
+              <EmptyState
+                icon={Inbox}
+                title="No sales records yet"
+                description={
+                  canWrite
+                    ? 'Click "Add record" above to log your first sale.'
+                    : "Records added by your team will show up here."
+                }
+              />
+            ) : (
+              <div className="overflow-x-auto">
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Product</TableHead>
+                      <TableHead>Amount</TableHead>
+                      <TableHead>Team</TableHead>
+                      <TableHead>Sold at</TableHead>
+                      <TableHead>Recorded by</TableHead>
+                      <TableHead className="text-right">Actions</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {paginatedRecords.map((record) => (
+                      <TableRow key={record.id}>
+                        <TableCell className="font-medium">{record.product}</TableCell>
+                        <TableCell>{currency.format(Number(record.amount))}</TableCell>
+                        <TableCell className="text-muted-foreground">
+                          {record.team.name}
+                        </TableCell>
+                        <TableCell className="text-muted-foreground">
+                          {new Date(record.soldAt).toLocaleDateString()}
+                        </TableCell>
+                        <TableCell className="text-muted-foreground">
+                          {record.recordedBy.name}
+                        </TableCell>
+                        <TableCell className="text-right">
+                          {canWriteRecord(record) && (
+                            <div className="flex justify-end gap-1">
+                              <Button
+                                variant="ghost"
+                                size="icon-sm"
+                                onClick={() => openEdit(record)}
+                                aria-label="Edit record"
+                              >
+                                <Pencil />
+                              </Button>
+                              <Button
+                                variant="ghost"
+                                size="icon-sm"
+                                onClick={() => setDeleteTarget(record)}
+                                aria-label="Delete record"
+                              >
+                                <Trash2 />
+                              </Button>
+                            </div>
+                          )}
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </div>
+            )}
+
+            {records.length > 0 && (
+              <div className="mt-4 flex flex-wrap items-center justify-between gap-3 text-sm text-muted-foreground">
+                <div className="flex items-center gap-2">
+                  <span>Rows per page</span>
+                  <Select
+                    value={String(pageSize)}
+                    onValueChange={(value) => {
+                      setPageSize(Number(value ?? 25));
+                      setPage(1);
+                    }}
+                  >
+                    <SelectTrigger size="sm" className="w-[72px]">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {[10, 25, 50, 100].map((size) => (
+                        <SelectItem key={size} value={String(size)}>
+                          {size}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                <div className="flex items-center gap-4">
+                  <span>
+                    {pageStart}–{pageEnd} of {records.length}
+                  </span>
+                  <div className="flex items-center gap-1">
                     <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={() => openEdit(record)}
+                      variant="outline"
+                      size="icon-sm"
+                      onClick={() => setPage((p) => Math.max(1, p - 1))}
+                      disabled={currentPage === 1}
+                      aria-label="Previous page"
                     >
-                      Edit
+                      <ChevronLeft />
                     </Button>
                     <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={() => handleDelete(record.id)}
+                      variant="outline"
+                      size="icon-sm"
+                      onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+                      disabled={currentPage === totalPages}
+                      aria-label="Next page"
                     >
-                      Delete
+                      <ChevronRight />
                     </Button>
                   </div>
-                )}
-              </TableCell>
-            </TableRow>
-          ))}
-        </TableBody>
-      </Table>
+                </div>
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      </div>
+
+      <ChatWidget
+        messages={chatMessages}
+        input={chatInput}
+        onInputChange={setChatInput}
+        onSubmit={handleSendChat}
+        loading={chatLoading}
+        error={chatError}
+      />
+    </div>
+  );
+}
+
+function StatCard({
+  icon: Icon,
+  label,
+  value,
+}: {
+  icon: React.ComponentType<{ className?: string }>;
+  label: string;
+  value: string;
+}) {
+  return (
+    <Card>
+      <CardContent className="flex items-center gap-3 py-1">
+        <span className="flex size-10 shrink-0 items-center justify-center rounded-lg bg-accent text-accent-foreground">
+          <Icon className="size-5" />
+        </span>
+        <div className="flex flex-col">
+          <span className="text-xs text-muted-foreground">{label}</span>
+          <span className="text-lg font-semibold tracking-tight">{value}</span>
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
+function EmptyState({
+  icon: Icon,
+  title,
+  description,
+}: {
+  icon: React.ComponentType<{ className?: string }>;
+  title: string;
+  description: string;
+}) {
+  return (
+    <div className="flex flex-col items-center justify-center gap-2 py-10 text-center">
+      <span className="flex size-10 items-center justify-center rounded-full bg-muted text-muted-foreground">
+        <Icon className="size-5" />
+      </span>
+      <p className="text-sm font-medium">{title}</p>
+      <p className="max-w-xs text-sm text-muted-foreground">{description}</p>
     </div>
   );
 }
