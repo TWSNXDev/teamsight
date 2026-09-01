@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useTheme } from "next-themes";
 import { LogOut, Moon, Sun } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
@@ -55,12 +56,15 @@ export function DashboardNav({ user, onlineCount }: DashboardNavProps) {
   return (
     <header className="sticky top-0 z-40 border-b border-border/70 bg-background/85 backdrop-blur-sm">
       <div className="flex h-14 items-center justify-between px-4 sm:px-6 lg:px-8">
-        <div className="flex items-center gap-2 text-sm font-semibold tracking-tight">
+        <Link
+          href="/dashboard"
+          className="flex items-center gap-2 text-sm font-semibold tracking-tight"
+        >
           <span className="flex h-7 w-7 items-center justify-center rounded-lg bg-primary font-bold text-primary-foreground">
             T
           </span>
           <span className="hidden sm:inline">Teamsight</span>
-        </div>
+        </Link>
 
         <div className="flex items-center gap-4">
           <div className="hidden items-center gap-1.5 text-xs text-muted-foreground sm:flex">
