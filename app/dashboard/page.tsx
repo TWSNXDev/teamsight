@@ -144,28 +144,40 @@ export default function DashboardPage() {
       setOnlineUsers(users);
     }
 
+    function handleConnectError() {
+      toast.error("Live updates are unavailable — reconnecting...");
+    }
+
     socket.on("sales-record:created", handleCreated);
     socket.on("sales-record:updated", handleUpdated);
     socket.on("sales-record:deleted", handleDeleted);
     socket.on("online-users", handleOnlineUsers);
+    socket.on("connect_error", handleConnectError);
 
     return () => {
       socket.off("sales-record:created", handleCreated);
       socket.off("sales-record:updated", handleUpdated);
       socket.off("sales-record:deleted", handleDeleted);
       socket.off("online-users", handleOnlineUsers);
+      socket.off("connect_error", handleConnectError);
       socket.disconnect();
     };
   }, [session]);
 
   useEffect(() => {
     if (!session) return;
-    Promise.all([api.getSalesRecords(), api.getTeams()]).then(([records, teams]) => {
-      setRecords(records);
-      setTeams(teams);
-      if (teams[0]) setTeamId(teams[0].id);
-      setRecordsLoading(false);
-    });
+    Promise.all([api.getSalesRecords(), api.getTeams()])
+      .then(([records, teams]) => {
+        setRecords(records);
+        setTeams(teams);
+        if (teams[0]) setTeamId(teams[0].id);
+      })
+      .catch((err) => {
+        toast.error(err instanceof Error ? err.message : "Failed to load dashboard data");
+      })
+      .finally(() => {
+        setRecordsLoading(false);
+      });
   }, [session]);
 
   const chartData = useMemo(() => {
@@ -305,7 +317,7 @@ export default function DashboardPage() {
     return (
       <div className="flex flex-1 flex-col gap-6 p-8">
         <Skeleton className="h-14 w-full max-w-sm" />
-        <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
           {Array.from({ length: 4 }).map((_, i) => (
             <Skeleton key={i} className="h-24 w-full" />
           ))}
@@ -416,7 +428,7 @@ export default function DashboardPage() {
           </div>
         </div>
 
-        <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
           {recordsLoading ? (
             Array.from({ length: 4 }).map((_, i) => (
               <Skeleton key={i} className="h-24 w-full" />
@@ -460,6 +472,8 @@ export default function DashboardPage() {
                       <CartesianGrid strokeDasharray="3 3" className="stroke-border" />
                       <XAxis
                         dataKey="team"
+                        tickFormatter={(value: string) => value.replace(" Region", "")}
+                        interval={0}
                         tick={{ fontSize: 12, fill: "var(--muted-foreground)" }}
                         axisLine={{ stroke: "var(--border)" }}
                         tickLine={false}
@@ -747,9 +761,9 @@ function StatCard({
         <span className="flex size-10 shrink-0 items-center justify-center rounded-lg bg-accent text-accent-foreground">
           <Icon className="size-5" />
         </span>
-        <div className="flex flex-col">
-          <span className="text-xs text-muted-foreground">{label}</span>
-          <span className="text-lg font-semibold tracking-tight">{value}</span>
+        <div className="flex min-w-0 flex-col">
+          <span className="truncate text-xs text-muted-foreground">{label}</span>
+          <span className="truncate text-lg font-semibold tracking-tight">{value}</span>
         </div>
       </CardContent>
     </Card>

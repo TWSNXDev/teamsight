@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { signIn } from "@/lib/auth-client";
 
@@ -16,6 +17,7 @@ export function DemoCta() {
 
     if (error) {
       setLoading(false);
+      toast.error("Demo is temporarily unavailable. Please try again shortly.");
       return;
     }
 
